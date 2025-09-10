@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Paper Check Viewer</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/themes/light.css" />
+</head>
+<body>
+  <header>
+    <h1>Paper Check</h1>
+    <form id="uploadForm">
+      <input type="file" id="pdfFile" accept="application/pdf" required />
+      <button type="submit">Analyze</button>
+    </form>
+    <div id="filters" class="filters">
+      <label><input type="checkbox" data-agent="Grammar (LanguageTool)" checked /> Grammar</label>
+      <label><input type="checkbox" data-agent="Stylist" checked /> Style</label>
+      <label><input type="checkbox" data-agent="Coherence Analyst" checked /> Coherence</label>
+    </div>
+  </header>
+
+  <main>
+    <div id="viewerContainer">
+      <div id="pdfViewer" class="pdfViewer"></div>
+      <div id="overlay" class="overlay"></div>
+    </div>
+  </main>
+
+  <script src="https://unpkg.com/@popperjs/core@2"></script>
+  <script src="https://unpkg.com/tippy.js@6"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
