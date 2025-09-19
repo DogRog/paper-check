@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Paper Check</title>
+    <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css"
+        crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/dist/tippy.css" />
+</head>
+
+<body>
+    <div class="app">
+        <aside class="sidebar">
+            <header class="brand">Paper Check</header>
+            <div class="controls">
+                <button id="btn-upload" class="btn primary">Upload</button>
+                <button id="btn-analyze" class="btn" disabled>Analyze</button>
+                <input id="file-input" type="file" accept="application/pdf" hidden />
+                <div id="filename" class="filename" title="Selected file">No file selected</div>
+                <div id="progress" class="progress" hidden>Analyzing…</div>
+            </div>
+            <div class="settings">
+                <div class="settings-title">Filters</div>
+                <div id="filters" class="filters-list"></div>
+            </div>
+            <div class="spacer"></div>
+            <div class="messages">
+                <div id="msg-ok" class="msg ok" hidden></div>
+                <div id="msg-error" class="msg error" hidden></div>
+            </div>
+            <div class="sidebar-footer">
+                <button id="btn-settings" class="btn" title="Agents settings">Settings</button>
+            </div>
+        </aside>
+        <section class="preview">
+            <div id="placeholder" class="placeholder">PDF preview</div>
+            <div id="viewerContainer" class="viewer-container" hidden>
+                <div id="pdfViewer" class="pdfViewer"></div>
+            </div>
+        </section>
+        
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal" hidden>
+            <div class="modal-backdrop"></div>
+            <div class="modal-card">
+                <header class="modal-header">
+                    <h2>Agents Settings</h2>
+                    <button id="btn-close-settings" class="icon-btn" aria-label="Close">✕</button>
+                </header>
+                <section class="modal-body">
+                    <div class="agents-layout">
+                        <div class="agents-list">
+                            <div class="list-header">
+                                <div>Agents</div>
+                                <button id="btn-new-agent" class="btn small">New</button>
+                            </div>
+                            <ul id="agents-ul" class="ul"></ul>
+                        </div>
+                        <div class="agent-form">
+                            <div class="form-row">
+                                <label for="agent-id">ID</label>
+                                <input id="agent-id" type="text" placeholder="auto" disabled />
+                            </div>
+                            <div class="form-row">
+                                <label for="agent-name">Name (Category)</label>
+                                <input id="agent-name" type="text" placeholder="e.g., Structure Reviewer" />
+                            </div>
+                            <div class="form-row">
+                                <label for="agent-prompt">System Prompt</label>
+                                <textarea id="agent-prompt" rows="8" placeholder="Describe what this agent analyzes..."></textarea>
+                            </div>
+                            <div class="form-actions">
+                                <button id="btn-save-agent" class="btn primary">Save</button>
+                                <button id="btn-delete-agent" class="btn danger" disabled>Delete</button>
+                            </div>
+                            <div id="settings-msg" class="msg small" hidden></div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://unpkg.com/@popperjs/core@2"></script>
+    <script src="https://unpkg.com/tippy.js@6"></script>
+    <script src="./main.js"></script>
+</body>
+
+</html>

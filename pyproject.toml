@@ -13,5 +13,4 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn>=0.30.6",
     "python-multipart>=0.0.9",
-    "language-tool-python>=2.8.1",
 ]
