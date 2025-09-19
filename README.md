@@ -28,6 +28,30 @@ Use uv (recommended):
 uv sync
 ```
 
+## Docker
+
+You can build and run the app in a container. Ensure you have a `.env` file with `GOOGLE_API_KEY` in the project root (see `.env.example`).
+
+Build the image:
+
+```bash
+docker build -t paper-check .
+```
+
+Run the container:
+
+```bash
+docker run --rm -p 8000:8000 --env-file .env paper-check
+```
+
+Or use Compose:
+
+```bash
+docker compose up --build
+```
+
+Open <http://127.0.0.1:8000/> in your browser.
+
 ## Run the backend
 
 ```bash
