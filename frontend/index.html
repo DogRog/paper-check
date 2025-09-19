@@ -24,15 +24,13 @@
             </div>
             <div class="settings">
                 <div class="settings-title">Filters</div>
-                <div id="filters" class="filters-list"></div>
+                <label class="check"><input id="chk-tone" type="checkbox" checked /> <span>Tone</span></label>
+                <label class="check"><input id="chk-structure" type="checkbox" checked /> <span>Structure</span></label>
+                <label class="check"><input id="chk-coherence" type="checkbox" checked /> <span>Coherence</span></label>
             </div>
-            <div class="spacer"></div>
             <div class="messages">
                 <div id="msg-ok" class="msg ok" hidden></div>
                 <div id="msg-error" class="msg error" hidden></div>
-            </div>
-            <div class="sidebar-footer">
-                <button id="btn-settings" class="btn" title="Agents settings">Settings</button>
             </div>
         </aside>
         <section class="preview">
@@ -41,50 +39,11 @@
                 <div id="pdfViewer" class="pdfViewer"></div>
             </div>
         </section>
-        
-        <!-- Settings Modal -->
-        <div id="settings-modal" class="modal" hidden>
-            <div class="modal-backdrop"></div>
-            <div class="modal-card">
-                <header class="modal-header">
-                    <h2>Agents Settings</h2>
-                    <button id="btn-close-settings" class="icon-btn" aria-label="Close">✕</button>
-                </header>
-                <section class="modal-body">
-                    <div class="agents-layout">
-                        <div class="agents-list">
-                            <div class="list-header">
-                                <div>Agents</div>
-                                <button id="btn-new-agent" class="btn small">New</button>
-                            </div>
-                            <ul id="agents-ul" class="ul"></ul>
-                        </div>
-                        <div class="agent-form">
-                            <div class="form-row">
-                                <label for="agent-id">ID</label>
-                                <input id="agent-id" type="text" placeholder="auto" disabled />
-                            </div>
-                            <div class="form-row">
-                                <label for="agent-name">Name (Category)</label>
-                                <input id="agent-name" type="text" placeholder="e.g., Structure Reviewer" />
-                            </div>
-                            <div class="form-row">
-                                <label for="agent-prompt">System Prompt</label>
-                                <textarea id="agent-prompt" rows="8" placeholder="Describe what this agent analyzes..."></textarea>
-                            </div>
-                            <div class="form-actions">
-                                <button id="btn-save-agent" class="btn primary">Save</button>
-                                <button id="btn-delete-agent" class="btn danger" disabled>Delete</button>
-                            </div>
-                            <div id="settings-msg" class="msg small" hidden></div>
-                        </div>
-                    </div>
-                </section>
-            </div>
-        </div>
     </div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous"
+        referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.js" crossorigin="anonymous"
+        referrerpolicy="no-referrer"></script>
     <script src="https://unpkg.com/@popperjs/core@2"></script>
     <script src="https://unpkg.com/tippy.js@6"></script>
     <script src="./main.js"></script>

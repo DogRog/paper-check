@@ -43,7 +43,7 @@ def _init_defaults() -> None:
         {
             "id": "stylist",
             "name": "Stylist",
-            "category": "tone",
+            "category": "Stylist",
             "prompt": (
                 "You are a scientific style editor. Identify unclear, verbose, or non-academic tone. "
                 "Avoid generic praise; only return specific issues with actionable suggestions."
@@ -52,7 +52,7 @@ def _init_defaults() -> None:
         {
             "id": "structure",
             "name": "Structure Reviewer",
-            "category": "structure",
+            "category": "Structure Reviewer",
             "prompt": (
                 "You are a structure reviewer. Assess section/paragraph organization, headings, ordering, and transitions. "
                 "Flag structural issues such as misplaced content, weak transitions, and poor paragraph focus."
@@ -61,7 +61,7 @@ def _init_defaults() -> None:
         {
             "id": "coherence",
             "name": "Coherence Analyst",
-            "category": "coherence",
+            "category": "Coherence Analyst",
             "prompt": (
                 "You are a logical coherence analyst. Evaluate argument flow, logical gaps, contradictions, and missing links. "
                 "Only return concrete issues tied to exact quotes."
@@ -167,7 +167,7 @@ def build_agent_node(llm, system_prompt: str, agent_name: str, category: str):
 def coordinator_agent(state: AgentState) -> AgentState:
     if not state.get("feedback"):
         return state
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.0)
     prompt = (
         "You consolidate overlapping, redundant, or low-value feedback. Return only the JSON list.\n"
         f"Input: {json.dumps(state['feedback'])}"
@@ -186,7 +186,7 @@ def coordinator_agent(state: AgentState) -> AgentState:
 
 def run_agents_to_annotations(input_pdf_path: str) -> List[Dict[str, Any]]:
     """Run configured agents and map quotes to PDF rectangles."""
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash")
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
 
     json_suffix = (
         """

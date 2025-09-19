@@ -1,215 +1,342 @@
-const API_BASE = localStorage.getItem('API_BASE') || 'http://127.0.0.1:8000';
-const btnUpload = document.getElementById('btn-upload');
-const btnAnalyze = document.getElementById('btn-analyze');
-const btnSettings = document.getElementById('btn-settings');
-const fileInput = document.getElementById('file-input');
-const filenameEl = document.getElementById('filename');
-const progressEl = document.getElementById('progress');
-const placeholder = document.getElementById('placeholder');
-const viewerContainer = document.getElementById('viewerContainer');
-const pdfViewer = document.getElementById('pdfViewer');
-const filtersContainer = document.getElementById('filters');
-const msgOk = document.getElementById('msg-ok');
-const msgError = document.getElementById('msg-error');
+// Frontend logic to preview a PDF, send it to backend for analysis, and render annotations
+// Requirements:
+// - Backend: FastAPI endpoint POST /api/analyze_pdf (multipart file)
+// - Libraries loaded from index.html: pdf.js, pdf_viewer.js, tippy.js
 
-// Settings modal elements
-const settingsModal = document.getElementById('settings-modal');
-const btnCloseSettings = document.getElementById('btn-close-settings');
-const btnNewAgent = document.getElementById('btn-new-agent');
-const agentsUl = document.getElementById('agents-ul');
-const agentIdEl = document.getElementById('agent-id');
-const agentNameEl = document.getElementById('agent-name');
-const agentCategoryEl = document.getElementById('agent-category');
-const agentPromptEl = document.getElementById('agent-prompt');
-const btnSaveAgent = document.getElementById('btn-save-agent');
-const btnDeleteAgent = document.getElementById('btn-delete-agent');
-const settingsMsg = document.getElementById('settings-msg');
+; (function () {
+  'use strict'
 
-function show(el, html) { el.innerHTML = html; el.hidden = false; }
-function hide(el) { el.hidden = true; el.innerHTML = ''; }
+  // Elements
+  const btnUpload = document.getElementById('btn-upload')
+  const btnAnalyze = document.getElementById('btn-analyze')
+  const fileInput = document.getElementById('file-input')
+  const filenameEl = document.getElementById('filename')
+  const progressEl = document.getElementById('progress')
+  const msgOk = document.getElementById('msg-ok')
+  const msgError = document.getElementById('msg-error')
+  const placeholder = document.getElementById('placeholder')
+  const viewerContainer = document.getElementById('viewerContainer')
+  const pdfViewerRoot = document.getElementById('pdfViewer')
 
-btnUpload.addEventListener('click', () => fileInput.click());
+  // State
+  let currentFile = null /** @type {File|null} */
+  let pdfDoc = null /** @type {import('pdfjs-dist').PDFDocumentProxy|null} */
+  let pageSizes = [] /** @type {Array<{page:number,width:number,height:number}>} */
+  let annotations = [] /** @type {Array<any>} */
+  const overlayLayers = new Map() /** pageNum -> HTMLElement */
 
-let currentPdf = null;
-let pdfEventBus = null;
-let highlights = [];
-let activeFilters = new Set();
-let cachedAgents = [];
-
-function clearHighlights() { for (const h of highlights) h.el.remove(); highlights = []; }
-function applyFilterVisibility() {
-  for (const h of highlights) {
-    h.el.style.display = activeFilters.has(h.category) ? 'block' : 'none';
+  // Filters map UI id -> agent category substrings
+  const FILTERS = {
+    'chk-tone': ['Stylist', 'Tone'],
+    'chk-structure': ['Structure Reviewer', 'Structure'],
+    'chk-coherence': ['Coherence Analyst', 'Coherence']
   }
-}
 
-function renderFilters() {
-  filtersContainer.innerHTML = '';
-  for (const a of cachedAgents) {
-    const id = `filter-${a.name.replace(/\s+/g,'-').toLowerCase()}`;
-    const label = document.createElement('label');
-    label.className = 'check';
-    label.innerHTML = `<input id="${id}" type="checkbox" ${activeFilters.has(a.name) ? 'checked' : ''}/> <span>${a.name}</span>`;
-    const input = label.querySelector('input');
-    input.addEventListener('change', () => {
-      if (input.checked) activeFilters.add(a.name); else activeFilters.delete(a.name);
-      applyFilterVisibility();
-    });
-    filtersContainer.appendChild(label);
-  }
-}
-
-fileInput.addEventListener('change', async () => {
-  hide(msgOk); hide(msgError); clearHighlights();
-  const file = fileInput.files?.[0];
-  if (!file) { filenameEl.textContent = 'No file selected'; viewerContainer.hidden = true; placeholder.hidden = false; btnAnalyze.disabled = true; return; }
-  filenameEl.textContent = file.name;
-
-  const pdfjsLib = window['pdfjsLib'];
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  const arrayBuf = await file.arrayBuffer();
-  const loadingTask = pdfjsLib.getDocument({ data: arrayBuf });
-  currentPdf = await loadingTask.promise;
-  pdfViewer.innerHTML = '';
-  viewerContainer.hidden = false; placeholder.hidden = true; btnAnalyze.disabled = false;
-  pdfEventBus = new window['pdfjsViewer'].EventBus();
-  const viewer = new window['pdfjsViewer'].PDFViewer({ container: viewerContainer, viewer: pdfViewer, textLayerMode: 2, annotationMode: 2, eventBus: pdfEventBus });
-  viewer.setDocument(currentPdf);
-});
-
-function colorForAgent(agent, category) {
-  // Stable but varied colors; map by category string
-  const key = (category || '').toLowerCase();
-  if (key.includes('coherence')) return 'rgba(16,185,129,0.35)';
-  if (key.includes('structure')) return 'rgba(59,130,246,0.35)';
-  if (key.includes('tone') || key.includes('style')) return 'rgba(234,88,12,0.35)';
-  return 'rgba(217,119,6,0.35)';
-}
-function ensureOverlay(pageView) { let overlay = pageView.querySelector('.overlay-layer'); if (!overlay) { overlay = document.createElement('div'); overlay.className = 'overlay-layer'; overlay.style.position = 'absolute'; overlay.style.left = overlay.style.top = overlay.style.right = overlay.style.bottom = '0'; overlay.style.pointerEvents = 'auto'; overlay.style.zIndex = '30'; pageView.appendChild(overlay);} return overlay; }
-async function waitForTextLayer(pageNum, attempts=30, delay=100){ for(let i=0;i<attempts;i++){ const pageView = pdfViewer.querySelector(`.page[data-page-number="${pageNum}"]`); const textLayer = pageView && pageView.querySelector('.textLayer'); if (textLayer && textLayer.querySelector('span')) return true; await new Promise(r=>setTimeout(r,delay)); } return false; }
-
-btnAnalyze.addEventListener('click', async () => {
-  hide(msgOk); hide(msgError); clearHighlights();
-  const file = fileInput.files?.[0]; if (!file) { show(msgError, 'Please choose a PDF first.'); return; }
-  try {
-    // Disable controls and show progress
-    btnAnalyze.disabled = true; btnUpload.disabled = true; show(progressEl, 'Analyzing…');
-    const formData = new FormData(); formData.append('file', file, file.name);
-    const res = await fetch(`${API_BASE}/api/analyze_pdf`, { method: 'POST', body: formData });
-    if (!res.ok) { const text = await res.text(); let data; try { data = JSON.parse(text); } catch { data = { detail: text }; } throw new Error(data.detail || data.message || `Analyze failed (${res.status})`); }
-    const data = await res.json(); const annotations = data.annotations || []; const pageSizes = new Map((data.page_sizes || []).map(p => [p.page, { width: p.width, height: p.height }]));
-
-    const num = currentPdf.numPages; for (let i=1;i<=num;i++){ await waitForTextLayer(i); }
-
-  const byPage = new Map(); for (const a of annotations){ if(!byPage.has(a.page)) byPage.set(a.page,[]); byPage.get(a.page).push(a); }
-    for (const [pageNum, list] of byPage.entries()) {
-      const pageView = pdfViewer.querySelector(`.page[data-page-number="${pageNum}"]`); if (!pageView) continue;
-      const overlay = ensureOverlay(pageView); const pageRect = pageView.getBoundingClientRect(); const size = pageSizes.get(pageNum);
-      let sx=1, sy=1; if (size && size.width>0 && size.height>0) { sx = pageRect.width/size.width; sy = pageRect.height/size.height; }
-      for (const a of list) {
-        const [x1,y1,x2,y2] = a.rect || [0,0,0,0]; const left = x1*sx; const top = y1*sy; const width = (x2-x1)*sx; const height = (y2-y1)*sy;
-        const category = a.category || a.agent || 'Other';
-        const el = document.createElement('div'); el.className='hl'; Object.assign(el.style,{position:'absolute',left:`${left}px`,top:`${top}px`,width:`${width}px`,height:`${height}px`,background: colorForAgent(a.agent, category),pointerEvents:'auto',cursor:'help'});
-        const tooltip = document.createElement('div'); tooltip.innerHTML = `<strong>${a.agent}</strong><br/><em>${a.quote||''}</em><br/>${a.comment||''}`; tippy(el,{content:tooltip,allowHTML:true,theme:'light-border',maxWidth:420});
-        overlay.appendChild(el);
-        highlights.push({ el, category });
-      }
+  // Configure pdf.js worker (use CDN shipped one if available)
+  const pdfjsLib = window['pdfjsLib']
+  if (pdfjsLib) {
+    // Try to auto-detect worker from same CDN version; fallback to default
+    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
     }
-    applyFilterVisibility(); show(msgOk, `${annotations.length} highlights added`);
-  } catch (err) { show(msgError, err.message || String(err)); }
-  finally {
-    // Re-enable controls and hide progress
-    btnAnalyze.disabled = false; btnUpload.disabled = false; hide(progressEl);
   }
-});
 
-// -------- Settings UI / Agents CRUD --------
-function openSettings() { settingsModal.hidden = false; loadAgents(); }
-function closeSettings() { settingsModal.hidden = true; clearAgentForm(); agentsUl.innerHTML = ''; hide(settingsMsg); }
-btnSettings?.addEventListener('click', openSettings);
-btnCloseSettings?.addEventListener('click', closeSettings);
-settingsModal?.addEventListener('click', (e) => { if (e.target.classList.contains('modal-backdrop')) closeSettings(); });
+  // Setup PDF.js viewer
+  const eventBus = new pdfjsViewer.EventBus()
+  const pdfLinkService = new pdfjsViewer.PDFLinkService({ eventBus })
+  const pdfViewer = new pdfjsViewer.PDFViewer({
+    container: viewerContainer,
+    viewer: pdfViewerRoot,
+    eventBus,
+    linkService: pdfLinkService,
+    removePageBorders: true
+  })
+  pdfLinkService.setViewer(pdfViewer)
 
-function showSettingsMsg(text, ok=false) { settingsMsg.textContent = text; settingsMsg.hidden = false; settingsMsg.classList.toggle('ok', ok); settingsMsg.classList.toggle('error', !ok); }
-function clearAgentForm() {
-  agentIdEl.value = '';
-  agentNameEl.value = '';
-  // category is derived from name now
-  agentPromptEl.value = '';
-  btnDeleteAgent.disabled = true;
-}
-
-btnNewAgent?.addEventListener('click', () => { clearAgentForm(); agentNameEl.focus(); });
-
-async function loadAgents() {
-  try {
-    const res = await fetch(`${API_BASE}/api/agents`);
-    if (!res.ok) throw new Error(`Failed to load agents (${res.status})`);
-    const data = await res.json();
-    const agents = (data.agents || []).map(a => ({...a, category: a.name})); // enforce name==category in UI
-    cachedAgents = agents;
-    if (activeFilters.size === 0) {
-      // default all on
-      for (const a of agents) activeFilters.add(a.name);
+  // UI helpers
+  function show(el) {
+    el.removeAttribute('hidden')
+  }
+  function hide(el) {
+    el.setAttribute('hidden', 'true')
+  }
+  function toastOk(text) {
+    msgOk.textContent = text
+    show(msgOk)
+    setTimeout(() => hide(msgOk), 3000)
+  }
+  function toastError(text) {
+    msgError.textContent = text
+    show(msgError)
+    setTimeout(() => hide(msgError), 5000)
+  }
+  function setBusy(busy) {
+    if (busy) {
+      btnAnalyze.setAttribute('disabled', 'true')
+      btnUpload.setAttribute('disabled', 'true')
+      show(progressEl)
     } else {
-      // prune filters for removed agents
-      for (const key of Array.from(activeFilters)) if (!agents.find(a=>a.name===key)) activeFilters.delete(key);
+      btnAnalyze.removeAttribute('disabled')
+      btnUpload.removeAttribute('disabled')
+      hide(progressEl)
     }
-    renderFilters();
-    agentsUl.innerHTML = '';
-    for (const a of agents) {
-      const li = document.createElement('li');
-      li.className = 'li';
-      li.innerHTML = `<div class="li-title">${a.name}</div><div class="li-sub">${a.name}</div>`;
-      li.addEventListener('click', () => selectAgent(a));
-      agentsUl.appendChild(li);
+  }
+
+  // File selection
+  btnUpload.addEventListener('click', () => fileInput.click())
+  fileInput.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0]
+    if (!file) return
+    if (file.type !== 'application/pdf') {
+      toastError('Please select a PDF file.')
+      return
     }
-  } catch (err) {
-    showSettingsMsg(err.message || String(err));
-  }
-}
+    currentFile = file
+    filenameEl.textContent = file.name
+    btnAnalyze.removeAttribute('disabled')
+    try {
+      await loadLocalPdf(file)
+      toastOk('Loaded preview')
+    } catch (err) {
+      console.error(err)
+      toastError('Failed to load PDF preview.')
+    }
+  })
 
-function selectAgent(a) {
-  agentIdEl.value = a.id;
-  agentNameEl.value = a.name || '';
-  // category derived from name
-  agentPromptEl.value = a.prompt || '';
-  btnDeleteAgent.disabled = false;
-}
+  // Analyze button
+  btnAnalyze.addEventListener('click', async () => {
+    if (!currentFile) return
+    annotations = []
+    pageSizes = []
+    clearAllOverlays()
+    setBusy(true)
+    try {
+      const res = await callAnalyze(currentFile)
+      annotations = res.annotations || []
+      pageSizes = res.page_sizes || []
+      if (!annotations.length) {
+        toastOk('No issues found.')
+      } else {
+        toastOk(`Found ${annotations.length} items`)
+      }
+      renderAllOverlays()
+      scrollToFirstAnnotation()
+    } catch (err) {
+      console.error(err)
+      toastError('Analysis failed. Check backend logs.')
+    } finally {
+      setBusy(false)
+    }
+  })
 
-btnSaveAgent?.addEventListener('click', async () => {
-  try {
-    hide(settingsMsg);
-    const payload = {
-      name: agentNameEl.value.trim(),
-      category: agentNameEl.value.trim(),
-      prompt: agentPromptEl.value.trim(),
-    };
-    if (!payload.name) { showSettingsMsg('Name is required'); return; }
-    const id = agentIdEl.value.trim();
-    const method = id ? 'PUT' : 'POST';
-    const url = id ? `${API_BASE}/api/agents/${encodeURIComponent(id)}` : `${API_BASE}/api/agents`;
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!res.ok) throw new Error(`Save failed (${res.status})`);
-    showSettingsMsg('Saved', true);
-    await loadAgents();
-    // After CRUD, re-apply filters to highlights
-    applyFilterVisibility();
-  } catch (err) {
-    showSettingsMsg(err.message || String(err));
+  // Load local PDF into viewer
+  async function loadLocalPdf(file) {
+    const buf = await file.arrayBuffer()
+    const loadingTask = pdfjsLib.getDocument({ data: buf })
+    pdfDoc = await loadingTask.promise
+    pdfViewer.setDocument(pdfDoc)
+    pdfLinkService.setDocument(pdfDoc)
+    hide(placeholder)
+    show(viewerContainer)
+    // Clear previous overlays when loading a new doc
+    clearAllOverlays()
+    // After first rendering, build overlay roots per page
+    // We rely on a render event to size overlays when pages render
   }
-});
 
-btnDeleteAgent?.addEventListener('click', async () => {
-  const id = agentIdEl.value.trim(); if (!id) return;
-  try {
-    const res = await fetch(`${API_BASE}/api/agents/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error(`Delete failed (${res.status})`);
-    showSettingsMsg('Deleted', true);
-    clearAgentForm();
-    await loadAgents();
-    applyFilterVisibility();
-  } catch (err) {
-    showSettingsMsg(err.message || String(err));
+  // Backend call
+  async function callAnalyze(file) {
+    const fd = new FormData()
+    fd.append('file', file)
+    const resp = await fetch('/api/analyze_pdf', {
+      method: 'POST',
+      body: fd
+    })
+    if (!resp.ok) {
+      const t = await safeText(resp)
+      throw new Error(`HTTP ${resp.status}: ${t}`)
+    }
+    return resp.json()
   }
-});
+
+  async function safeText(resp) {
+    try {
+      return await resp.text()
+    } catch {
+      return ''
+    }
+  }
+
+  // Build and manage overlays
+  function ensureOverlayForPage(pageNum) {
+    let layer = overlayLayers.get(pageNum)
+    if (layer) return layer
+    // Find the page DOM element created by pdf.js
+    const pageView = pdfViewer._pages?.[pageNum - 1]
+    if (!pageView) return null
+    const div = pageView.div
+    let overlay = div.querySelector(':scope > .annotationOverlay')
+    if (!overlay) {
+      overlay = document.createElement('div')
+      overlay.className = 'annotationOverlay'
+      overlay.style.position = 'absolute'
+      overlay.style.left = '0'
+      overlay.style.top = '0'
+      overlay.style.right = '0'
+      overlay.style.bottom = '0'
+      overlay.style.pointerEvents = 'none'
+      overlay.style.zIndex = '20'
+      div.appendChild(overlay)
+    }
+    overlayLayers.set(pageNum, overlay)
+    return overlay
+  }
+
+  function clearAllOverlays() {
+    overlayLayers.forEach((layer) => layer.remove())
+    overlayLayers.clear()
+  }
+
+  function activeCategoryFilter(item) {
+    // item.category or item.agent may contain our keywords
+    const checks = Object.keys(FILTERS)
+    for (const id of checks) {
+      const input = document.getElementById(id)
+      if (!input) continue
+      const on = input.checked
+      const keys = FILTERS[id]
+      const hay = `${item.category || ''} ${item.agent || ''}`
+      const match = keys.some((k) => hay.toLowerCase().includes(k.toLowerCase()))
+      if (match && !on) return false
+    }
+    return true
+  }
+
+  function rectForPageSpace(item, pageNum) {
+    // Backend returns rect in PDF points for page index (1-based already adjusted)
+    // We need to scale to the rendered viewport size
+    const ps = pageSizes.find((p) => p.page === pageNum)
+    if (!ps) return null
+    const pageView = pdfViewer._pages?.[pageNum - 1]
+    if (!pageView) return null
+    const viewport = pageView.viewport
+    const scaleX = viewport.width / ps.width
+    const scaleY = viewport.height / ps.height
+    const [x0, y0, x1, y1] = item.rect
+    return {
+      left: x0 * scaleX,
+      top: y0 * scaleY,
+      width: (x1 - x0) * scaleX,
+      height: (y1 - y0) * scaleY
+    }
+  }
+
+  function renderAllOverlays() {
+    if (!annotations || !annotations.length) return
+    // Group by page
+    const byPage = new Map()
+    for (const a of annotations) {
+      const p = a.page // already 1-based per backend
+      if (!byPage.has(p)) byPage.set(p, [])
+      byPage.get(p).push(a)
+    }
+    // For each page, draw boxes
+    byPage.forEach((items, pageNum) => {
+      const layer = ensureOverlayForPage(pageNum)
+      if (!layer) return
+      // Clear layer
+      layer.replaceChildren()
+      for (const item of items) {
+        if (!activeCategoryFilter(item)) continue
+        const r = rectForPageSpace(item, pageNum)
+        if (!r) continue
+        const el = document.createElement('div')
+        el.className = 'anno'
+        el.style.position = 'absolute'
+        el.style.left = `${r.left}px`
+        el.style.top = `${r.top}px`
+        el.style.width = `${r.width}px`
+        el.style.height = `${r.height}px`
+        el.style.background = overlayColor(item)
+        el.style.opacity = '0.8'
+        el.style.border = `1px solid ${overlayStroke(item)}`
+        el.style.borderRadius = '2px'
+        el.style.pointerEvents = 'auto'
+        el.style.cursor = 'help'
+        el.dataset.tooltip = tooltipHtml(item)
+        layer.appendChild(el)
+        // Attach tooltip
+        tippy(el, {
+          allowHTML: true,
+          content: el.dataset.tooltip,
+          theme: 'light-border',
+          delay: [100, 0],
+          maxWidth: 420,
+          interactive: true
+        })
+      }
+    })
+  }
+
+  function overlayColor(item) {
+    const cat = `${item.category || ''}`.toLowerCase()
+    if (cat.includes('structure')) return 'rgba(255, 159, 64, 0.35)'
+    if (cat.includes('coherence')) return 'rgba(54, 162, 235, 0.35)'
+    // stylist/tone default
+    return 'rgba(255, 99, 132, 0.35)'
+  }
+  function overlayStroke(item) {
+    const cat = `${item.category || ''}`.toLowerCase()
+    if (cat.includes('structure')) return 'rgb(255, 159, 64)'
+    if (cat.includes('coherence')) return 'rgb(54, 162, 235)'
+    return 'rgb(255, 99, 132)'
+  }
+
+  function tooltipHtml(item) {
+    const esc = (s) => String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+    return `
+			<div class="tip">
+				<div class="tip-h">
+					<span class="tip-cat">${esc(item.category || 'Other')}</span>
+					<span class="tip-agent">${esc(item.agent || '')}</span>
+				</div>
+				<div class="tip-quote">“${esc(item.quote || '')}”</div>
+				<div class="tip-comment">${esc(item.comment || '')}</div>
+			</div>
+		`
+  }
+
+  function scrollToFirstAnnotation() {
+    if (!annotations || !annotations.length) return
+    const first = annotations[0]
+    const pageNum = first.page
+    const layer = ensureOverlayForPage(pageNum)
+    if (!layer) return
+    // find the element roughly near the first annotation
+    const el = layer.querySelector('.anno')
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
+  // Re-render overlays when pages render (e.g., after zoom)
+  eventBus.on('pagesinit', () => {
+    pdfViewer.currentScaleValue = 'page-width'
+  })
+  eventBus.on('pagerendered', () => {
+    // pagerendered fires per page; we can rerender overlays for visible pages
+    renderAllOverlays()
+  })
+  window.addEventListener('resize', () => {
+    renderAllOverlays()
+  })
+
+  // Filters listeners
+  Object.keys(FILTERS).forEach((id) => {
+    const el = document.getElementById(id)
+    if (el) el.addEventListener('change', () => renderAllOverlays())
+  })
+})()
+

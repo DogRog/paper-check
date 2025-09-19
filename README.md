@@ -1,6 +1,6 @@
 # Paper Check
 
-AI scientific paper review with structure, coherence, and tone checks powered by LangGraph LLM agents. Upload a PDF and the site highlights problematic parts; hover to see concise explanations. Use sidebar filters (Tone, Structure, Coherence) and manage Agents via the Settings modal.
+AI scientific paper review with structure, coherence, and tone checks powered by LangGraph LLM agents. Upload a PDF and the site highlights problematic parts; hover to see concise explanations. Use sidebar filters (Tone, Structure, Coherence).
 
 This project includes:
 
@@ -39,12 +39,7 @@ Backend endpoints:
 - `POST /api/analyze_pdf` with multipart/form-data field `file` (PDF)
 - The static UI is served at `/` from `frontend/`
 
-Agents management endpoints:
-
-- `GET /api/agents` — list agents
-- `POST /api/agents` — create an agent `{ name, prompt }` (category equals name)
-- `PUT /api/agents/{id}` — update an agent (category equals name)
-- `DELETE /api/agents/{id}` — delete an agent
+Agents are preconfigured in code; there is no web UI to add or edit agents.
 
 ## Open the web UI
 
@@ -52,8 +47,7 @@ Open <http://127.0.0.1:8000/> in your browser. Use the Upload and Analyze button
 
 In the sidebar:
 
-- Toggle filters for each agent by name (e.g., `Tone`, `Structure`, `Coherence`) to control highlight visibility.
-- Click `Settings` to open the Agents modal. You can add, edit, or remove agents (stored in-memory, reset on server restart). Defaults include `Stylist`, `Structure Reviewer`, and `Coherence Analyst`.
+- Toggle filters for `Tone`, `Structure`, and `Coherence` to control highlight visibility.
 
 If you need CORS from a different origin, the backend currently allows all origins.
 

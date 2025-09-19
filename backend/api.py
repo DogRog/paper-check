@@ -7,9 +7,7 @@ from typing import List, Dict, Any
 
 import fitz  # PyMuPDF
 from fastapi import APIRouter, UploadFile, File, HTTPException
-from pydantic import BaseModel, Field
-
-from .agents import run_agents_to_annotations, list_agents, create_agent_cfg, update_agent_cfg, delete_agent_cfg
+from .agents import run_agents_to_annotations
 
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -44,33 +42,4 @@ async def analyze_pdf(file: UploadFile = File(...)) -> Dict[str, Any]:
             pass
 
 
-class AgentIn(BaseModel):
-    name: str = Field(..., min_length=1)
-    prompt: str = Field("", min_length=0)
-
-
-@router.get("/agents")
-def get_agents() -> Dict[str, Any]:
-    return {"agents": list_agents()}
-
-
-@router.post("/agents")
-def create_agent(body: AgentIn) -> Dict[str, Any]:
-    # Enforce category==name
-    cfg = create_agent_cfg(body.name, body.name, body.prompt)
-    return {"agent": cfg}
-
-
-@router.put("/agents/{agent_id}")
-def update_agent(agent_id: str, body: AgentIn) -> Dict[str, Any]:
-    try:
-        cfg = update_agent_cfg(agent_id, body.name, body.name, body.prompt)
-        return {"agent": cfg}
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Agent not found")
-
-
-@router.delete("/agents/{agent_id}")
-def delete_agent(agent_id: str) -> Dict[str, Any]:
-    delete_agent_cfg(agent_id)
-    return {"ok": True}
+# Removed agent management endpoints
