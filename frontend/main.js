@@ -17,6 +17,9 @@
   const placeholder = document.getElementById('placeholder')
   const viewerContainer = document.getElementById('viewerContainer')
   const pdfViewerRoot = document.getElementById('pdfViewer')
+  const resultsPanel = document.getElementById('results-panel')
+  const finalScoreEl = document.getElementById('final-score')
+  const scoringSummaryEl = document.getElementById('scoring-summary')
 
   // State
   let currentFile = null /** @type {File|null} */
@@ -116,6 +119,16 @@
       const res = await callAnalyze(currentFile)
       annotations = res.annotations || []
       pageSizes = res.page_sizes || []
+      
+      // Show results
+      if (res.final_score !== null && res.final_score !== undefined) {
+        finalScoreEl.textContent = res.final_score + '/10'
+        scoringSummaryEl.textContent = res.scoring_summary || 'No summary available.'
+        show(resultsPanel)
+      } else {
+        hide(resultsPanel)
+      }
+
       if (!annotations.length) {
         toastOk('No issues found.')
       } else {

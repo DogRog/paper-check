@@ -12,6 +12,7 @@ router = APIRouter()
 
 class AnalysisResponse(BaseModel):
     final_score: float | None
+    scoring_summary: str | None
     annotations: List[Dict[str, Any]]
     page_sizes: List[Dict[str, Any]]
     statistics: Dict[str, Any]
@@ -126,6 +127,7 @@ async def analyze_pdf(file: UploadFile = File(...), agents: str = Form("[]"), mo
             review_result = {
                 "issues": filtered_issues,
                 "final_score": 7.5,
+                "scoring_summary": "This is a mock summary. The paper is generally good but needs some improvements in structure and coherence.",
                 "statistics": {
                     "total_issues": len(filtered_issues),
                     "by_severity": {"high": 1, "medium": 1, "low": 2},
@@ -170,6 +172,7 @@ async def analyze_pdf(file: UploadFile = File(...), agents: str = Form("[]"), mo
                 
         return {
             "final_score": review_result["final_score"],
+            "scoring_summary": review_result.get("scoring_summary"),
             "annotations": annotations,
             "page_sizes": page_sizes,
             "statistics": review_result["statistics"]

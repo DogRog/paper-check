@@ -75,6 +75,7 @@ class GraphState(TypedDict):
     citation_issues: List[Issue]
     coordinated_issues: List[Issue]
     final_score: Optional[float]
+    scoring_summary: Optional[str]
     messages: List[BaseMessage]
 
 
@@ -419,6 +420,7 @@ class PaperReviewAgents:
                 
                 return {
                     "final_score": score_data["score"],
+                    "scoring_summary": score_data["summary"],
                     "messages": new_messages
                 }
             except Exception as e:
@@ -428,7 +430,10 @@ class PaperReviewAgents:
                 base_score -= severity_counts["high"] * 2
                 base_score -= severity_counts["medium"] * 1
                 base_score -= severity_counts["low"] * 0.5
-                return {"final_score": max(1, min(10, base_score))}
+                return {
+                    "final_score": max(1, min(10, base_score)),
+                    "scoring_summary": "Score calculated based on issue severity counts due to processing error."
+                }
         
         return process
 
@@ -523,10 +528,7 @@ async def review_paper(paper_text: str, api_key: str, active_agents: List[str] =
         "paper_text": paper_text,
         "tone_issues": [],
         "structure_issues": [],
-        "coherence_issues": [],
-        "citation_issues": [],
-        "coordinated_issues": [],
-        "final_score": None,
+        "scoring_summary": None,
         "messages": []
     }
     
@@ -537,6 +539,7 @@ async def review_paper(paper_text: str, api_key: str, active_agents: List[str] =
     output = {
         "issues": [issue.to_dict() for issue in result["coordinated_issues"]],
         "final_score": result["final_score"],
+        "scoring_summary": result.get("scoring_summary"),
         "statistics": {
             "total_issues": len(result["coordinated_issues"]),
             "by_severity": {
