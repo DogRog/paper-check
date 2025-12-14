@@ -17,6 +17,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
+from backend.local_model import score_paper_with_local_model
 
 
 def clean_json_text(text: str | BaseMessage) -> str:
@@ -364,36 +365,9 @@ class PaperReviewAgents:
         return process
     
     def create_scoring_agent(self):
-        """Agent that provides final score for the paper"""
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a senior academic reviewer providing a final score for the paper.
-            
-            Based on the coordinated issues list, evaluate the paper's overall quality:
-            
-            Scoring criteria (1-10 scale):
-            - 9-10: Exceptional paper, publication-ready with minimal revisions
-            - 7-8: Good paper, needs minor revisions
-            - 5-6: Adequate paper, needs moderate revisions
-            - 3-4: Poor paper, needs major revisions
-            - 1-2: Very poor paper, needs complete rewrite
-            
-            Consider:
-            - Number and severity of issues
-            - Overall readability and structure
-            - Academic rigor and coherence
-            - Citation quality
-            
-            Output as JSON:
-            {{
-                "score": <number 1-10>,
-                "summary": "brief explanation of score"
-            }}"""),
-            ("human", "Issues found:\n{issues_summary}\n\nOriginal paper excerpt:\n{paper_excerpt}")
-        ])
+        """Agent that provides final score for the paper using fine-tuned Qwen model"""
         
-        chain = prompt | self.llm | StrOutputParser()
-        
-        def process(state: GraphState) -> dict:
+        async def process(state: GraphState) -> dict:
             # Prepare issues summary
             issues_summary = []
             severity_counts = {"high": 0, "medium": 0, "low": 0}
@@ -403,14 +377,16 @@ class PaperReviewAgents:
                 severity_counts[issue.severity] += 1
             
             issues_text = "\n".join(issues_summary) if issues_summary else "No major issues found"
-            paper_excerpt = state["paper_text"][:1000]  # First 1000 chars as context
+            paper_text = state["paper_text"]
             
             try:
-                response = chain.invoke({
-                    "issues_summary": issues_text,
-                    "paper_excerpt": paper_excerpt
-                })
-                score_data = json.loads(clean_json_text(response))
+                # Run local model inference in a separate thread to avoid blocking
+                print("Running local scoring model...")
+                score_data = await asyncio.to_thread(
+                    score_paper_with_local_model, 
+                    paper_text, 
+                    issues_text
+                )
                 print(f"Scoring Agent Output: {json.dumps(score_data, indent=2)}")
                 
                 # Add summary to messages
