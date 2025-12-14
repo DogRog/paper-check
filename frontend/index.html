@@ -23,10 +23,19 @@
                 <div id="progress" class="progress" hidden>Analyzing…</div>
             </div>
             <div class="settings">
+                <div class="settings-title">Model</div>
+                <select id="model-select" style="width: 100%; margin-bottom: 1rem; padding: 0.5rem;">
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                    <option value="qwen/qwen-2.5-72b-instruct">Qwen 2.5 72B (OpenRouter)</option>
+                    <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (OpenRouter)</option>
+                    <option value="deepseek/deepseek-r1">DeepSeek R1 (OpenRouter)</option>
+                </select>
+
                 <div class="settings-title">Filters</div>
                 <label class="check"><input id="chk-tone" type="checkbox" checked /> <span>Tone</span></label>
                 <label class="check"><input id="chk-structure" type="checkbox" checked /> <span>Structure</span></label>
                 <label class="check"><input id="chk-coherence" type="checkbox" checked /> <span>Coherence</span></label>
+                <label class="check"><input id="chk-citation" type="checkbox" checked /> <span>Citation</span></label>
             </div>
             <div class="messages">
                 <div id="msg-ok" class="msg ok" hidden></div>
@@ -46,7 +55,7 @@
         referrerpolicy="no-referrer"></script>
     <script src="https://unpkg.com/@popperjs/core@2"></script>
     <script src="https://unpkg.com/tippy.js@6"></script>
-    <script src="./main.js"></script>
+    <script src="./main.js?v=2"></script>
 </body>
 
 </html>

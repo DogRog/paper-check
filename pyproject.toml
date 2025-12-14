@@ -1,10 +1,3 @@
-[build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-packages = ["backend"]
-
 [project]
 name = "paper-check"
 version = "0.1.0"
@@ -12,18 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "ipykernel>=6.30.1",
-    "langchain-google-genai>=2.1.10",
-    "langgraph>=0.6.7",
-    "pymupdf>=1.26.4",
-    "python-dotenv>=1.1.1",
-    "fastapi>=0.115.0",
-    "uvicorn>=0.30.6",
-    "python-multipart>=0.0.9",
-    "datasets>=4.3.0",
-    "unsloth>=2025.11.3",
-    "transformers>=4.57.2",
-    "trl>=0.24.0",
-    "bitsandbytes",
-    "xformers",
+    "docling>=2.64.1",
+    "fastapi>=0.124.4",
+    "fitz>=0.0.1.dev2",
+    "langchain>=1.1.3",
+    "langchain-google-genai>=4.0.0",
+    "langchain-openai>=1.1.3",
+    "pymupdf>=1.26.7",
+    "python-multipart>=0.0.20",
+    "uvicorn>=0.38.0",
 ]

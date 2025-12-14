@@ -29,7 +29,8 @@
   const FILTERS = {
     'chk-tone': ['Stylist', 'Tone'],
     'chk-structure': ['Structure Reviewer', 'Structure'],
-    'chk-coherence': ['Coherence Analyst', 'Coherence']
+    'chk-coherence': ['Coherence Analyst', 'Coherence'],
+    'chk-citation': ['Citation Analyst', 'Citation']
   }
 
   // Configure pdf.js worker (use CDN shipped one if available)
@@ -149,6 +150,20 @@
   async function callAnalyze(file) {
     const fd = new FormData()
     fd.append('file', file)
+
+    // Collect active filters
+    const activeFilters = []
+    if (document.getElementById('chk-tone').checked) activeFilters.push('tone')
+    if (document.getElementById('chk-structure').checked) activeFilters.push('structure')
+    if (document.getElementById('chk-coherence').checked) activeFilters.push('coherence')
+    if (document.getElementById('chk-citation').checked) activeFilters.push('citation')
+
+    fd.append('agents', JSON.stringify(activeFilters))
+
+    // Add model
+    const model = document.getElementById('model-select').value
+    fd.append('model', model)
+
     const resp = await fetch('/api/analyze_pdf', {
       method: 'POST',
       body: fd
@@ -249,32 +264,37 @@
       layer.replaceChildren()
       for (const item of items) {
         if (!activeCategoryFilter(item)) continue
-        const r = rectForPageSpace(item, pageNum)
-        if (!r) continue
-        const el = document.createElement('div')
-        el.className = 'anno'
-        el.style.position = 'absolute'
-        el.style.left = `${r.left}px`
-        el.style.top = `${r.top}px`
-        el.style.width = `${r.width}px`
-        el.style.height = `${r.height}px`
-        el.style.background = overlayColor(item)
-        el.style.opacity = '0.8'
-        el.style.border = `1px solid ${overlayStroke(item)}`
-        el.style.borderRadius = '2px'
-        el.style.pointerEvents = 'auto'
-        el.style.cursor = 'help'
-        el.dataset.tooltip = tooltipHtml(item)
-        layer.appendChild(el)
-        // Attach tooltip
-        tippy(el, {
-          allowHTML: true,
-          content: el.dataset.tooltip,
-          theme: 'light-border',
-          delay: [100, 0],
-          maxWidth: 420,
-          interactive: true
-        })
+        const rects = item.rects || (item.rect ? [item.rect] : [])
+
+        for (const rectData of rects) {
+          const tempItem = { rect: rectData }
+          const r = rectForPageSpace(tempItem, pageNum)
+          if (!r) continue
+          const el = document.createElement('div')
+          el.className = 'anno'
+          el.style.position = 'absolute'
+          el.style.left = `${r.left}px`
+          el.style.top = `${r.top}px`
+          el.style.width = `${r.width}px`
+          el.style.height = `${r.height}px`
+          el.style.background = overlayColor(item)
+          el.style.opacity = '0.8'
+          el.style.border = `1px solid ${overlayStroke(item)}`
+          el.style.borderRadius = '2px'
+          el.style.pointerEvents = 'auto'
+          el.style.cursor = 'help'
+          el.dataset.tooltip = tooltipHtml(item)
+          layer.appendChild(el)
+          // Attach tooltip
+          tippy(el, {
+            allowHTML: true,
+            content: el.dataset.tooltip,
+            theme: 'light-border',
+            delay: [100, 0],
+            maxWidth: 420,
+            interactive: true
+          })
+        }
       }
     })
   }
@@ -283,6 +303,7 @@
     const cat = `${item.category || ''}`.toLowerCase()
     if (cat.includes('structure')) return 'rgba(255, 159, 64, 0.35)'
     if (cat.includes('coherence')) return 'rgba(54, 162, 235, 0.35)'
+    if (cat.includes('citation')) return 'rgba(153, 102, 255, 0.35)'
     // stylist/tone default
     return 'rgba(255, 99, 132, 0.35)'
   }
@@ -290,6 +311,7 @@
     const cat = `${item.category || ''}`.toLowerCase()
     if (cat.includes('structure')) return 'rgb(255, 159, 64)'
     if (cat.includes('coherence')) return 'rgb(54, 162, 235)'
+    if (cat.includes('citation')) return 'rgb(153, 102, 255)'
     return 'rgb(255, 99, 132)'
   }
 
