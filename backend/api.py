@@ -58,7 +58,13 @@ def find_quote_coordinates(pdf_path: str, quote: str, location_hint: str = None)
     return None
 
 @router.post("/api/analyze_pdf", response_model=AnalysisResponse)
-async def analyze_pdf(file: UploadFile = File(...), agents: str = Form("[]"), model: str = Form("gemini-2.5-flash")):
+async def analyze_pdf(
+    file: UploadFile = File(...), 
+    agents: str = Form("[]"), 
+    model: str = Form("gemini-2.5-flash"),
+    use_local_model: bool = Form(False),
+    scoring_model: str = Form("finetuned")
+):
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="File must be a PDF")
     
@@ -74,68 +80,23 @@ async def analyze_pdf(file: UploadFile = File(...), agents: str = Form("[]"), mo
         
         # 2. Run analysis (LangGraph)
         active_agents = json.loads(agents)
-        print(f"Analyzing with model: {model}")
+        print(f"Analyzing with model: {model}, Local: {use_local_model}, Scoring Model: {scoring_model}")
         
-        if "gemini" in model.lower() and "/" not in model:
-            api_key = os.environ.get("GOOGLE_API_KEY")
-        else:
-            api_key = os.environ.get("OPENROUTER_API_KEY")
-        
-        if not api_key:
-            print(f"Warning: API Key for {model} not set. Using mock data for testing.")
-            # Filter mock issues based on active agents if provided
-            all_mock_issues = [
-                {
-                    "problem_id": "mock-1",
-                    "agent_id": "tone_agent",
-                    "quote": "Abstract", # Usually present
-                    "suggestion": "This is a mock suggestion for the Abstract.",
-                    "severity": "low"
-                },
-                {
-                    "problem_id": "mock-2",
-                    "agent_id": "structure_agent",
-                    "quote": "Introduction",
-                    "suggestion": "The introduction could be more concise.",
-                    "severity": "medium"
-                },
-                {
-                    "problem_id": "mock-3",
-                    "agent_id": "coherence_agent",
-                    "quote": "Conclusion",
-                    "suggestion": "The conclusion should summarize the main points.",
-                    "severity": "high"
-                },
-                {
-                    "problem_id": "mock-4",
-                    "agent_id": "citation_agent",
-                    "quote": "References",
-                    "suggestion": "Check citation format.",
-                    "severity": "low"
-                }
-            ]
-            
-            filtered_issues = []
-            if not active_agents:
-                filtered_issues = all_mock_issues
+        api_key = ""
+        if not use_local_model:
+            if "gemini" in model.lower() and "/" not in model:
+                api_key = os.environ.get("GOOGLE_API_KEY")
             else:
-                for issue in all_mock_issues:
-                    agent_type = issue["agent_id"].replace("_agent", "")
-                    if agent_type in active_agents:
-                        filtered_issues.append(issue)
+                api_key = os.environ.get("OPENROUTER_API_KEY")
             
-            review_result = {
-                "issues": filtered_issues,
-                "final_score": 7.5,
-                "scoring_summary": "This is a mock summary. The paper is generally good but needs some improvements in structure and coherence.",
-                "statistics": {
-                    "total_issues": len(filtered_issues),
-                    "by_severity": {"high": 1, "medium": 1, "low": 2},
-                    "by_agent": {"tone": 1, "structure": 1, "coherence": 1, "citation": 1}
-                }
-            }
-        else:
-            review_result = await review_paper(text, api_key, active_agents, model=model)
+        review_result = await review_paper(
+            text, 
+            api_key, 
+            active_agents, 
+            model=model,
+            use_local_model=use_local_model,
+            scoring_model=scoring_model
+        )
 
         # 3. Map quotes to coordinates
         annotations = []

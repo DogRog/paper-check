@@ -1,8 +1,3 @@
-"""
-Academic Paper Review System using LangGraph
-Analyzes papers for tone, structure, coherence, and citations
-"""
-
 import json
 import uuid
 import asyncio
@@ -11,33 +6,53 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, TypedDict
 
-from langchain_core.messages import BaseMessage, HumanMessage
+# Added SystemMessage to imports
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
+
+# Assuming these exist in your backend
 from backend.local_model import score_paper_with_local_model
 
 
 def clean_json_text(text: str | BaseMessage) -> str:
-    """Clean JSON text by removing markdown code blocks"""
+    """
+    Clean JSON text by removing markdown code blocks and finding the correct 
+    outermost brackets (either [] for arrays or {} for objects).
+    """
     if hasattr(text, 'content'):
         text = text.content
     text = text.strip()
     
-    # Try to find markdown code blocks first
+    # 1. Try to find markdown code blocks first
     match = re.search(r"```(?:json)?\s*(.*)\s*```", text, re.DOTALL)
     if match:
-        return match.group(1).strip()
+        text = match.group(1).strip()
         
-    # If no code blocks, try to find the first [ and last ]
-    start = text.find('[')
-    end = text.rfind(']')
+    # 2. Determine if we are looking for an Array or an Object
+    # We look for the first occurrence of [ or {
+    first_sq = text.find('[')
+    first_curly = text.find('{')
     
-    if start != -1 and end != -1 and end > start:
-        return text[start:end+1]
-        
+    # If no brackets found, return original (will likely fail parse)
+    if first_sq == -1 and first_curly == -1:
+        return text
+
+    # Logic to extract the correct JSON structure
+    if first_sq != -1 and (first_curly == -1 or first_sq < first_curly):
+        # It's an array
+        end = text.rfind(']')
+        if end != -1:
+            return text[first_sq:end+1]
+    else:
+        # It's an object
+        end = text.rfind('}')
+        if end != -1:
+            return text[first_curly:end+1]
+            
     return text
 
 
@@ -55,7 +70,7 @@ class Issue:
     quote: str
     suggestion: str
     severity: SeverityLevel
-    location_hint: Optional[str] = None  # For tracking overlapping regions
+    location_hint: Optional[str] = None
     
     def to_dict(self):
         return {
@@ -63,7 +78,8 @@ class Issue:
             "agent_id": self.agent_id,
             "quote": self.quote,
             "suggestion": self.suggestion,
-            "severity": self.severity
+            "severity": self.severity,
+            "location_hint": self.location_hint
         }
 
 
@@ -83,8 +99,9 @@ class GraphState(TypedDict):
 class PaperReviewAgents:
     """Collection of agents for paper review"""
 
-    def __init__(self, llm: ChatGoogleGenerativeAI):
+    def __init__(self, llm: ChatGoogleGenerativeAI, scoring_model: str = "finetuned"):
         self.llm = llm
+        self.scoring_model = scoring_model
         
     def create_tone_agent(self):
         """Agent that checks for non-academic tone"""
@@ -117,18 +134,19 @@ class PaperReviewAgents:
         
         async def process(state: GraphState) -> dict:
             try:
+                # Note: We do NOT format {text} here with f-string to allow LangChain to handle escaping
                 response = await chain.ainvoke({"text": state["paper_text"]})
                 issues_data = json.loads(clean_json_text(response))
-                print(f"Tone Agent Output: {json.dumps(issues_data, indent=2)}")
+                print(f"Tone Agent Output: {len(issues_data)} issues found")
                 
                 tone_issues = []
                 for issue in issues_data:
                     tone_issues.append(Issue(
                         problem_id=str(uuid.uuid4()),
                         agent_id="tone_agent",
-                        quote=issue["quote"],
-                        suggestion=issue["suggestion"],
-                        severity=SeverityLevel(issue["severity"]),
+                        quote=issue.get("quote", ""),
+                        suggestion=issue.get("suggestion", ""),
+                        severity=SeverityLevel(issue.get("severity", "low")),
                         location_hint=issue.get("location_hint")
                     ))
                 
@@ -172,16 +190,16 @@ class PaperReviewAgents:
             try:
                 response = await chain.ainvoke({"text": state["paper_text"]})
                 issues_data = json.loads(clean_json_text(response))
-                print(f"Structure Agent Output: {json.dumps(issues_data, indent=2)}")
+                print(f"Structure Agent Output: {len(issues_data)} issues found")
                 
                 structure_issues = []
                 for issue in issues_data:
                     structure_issues.append(Issue(
                         problem_id=str(uuid.uuid4()),
                         agent_id="structure_agent",
-                        quote=issue["quote"],
-                        suggestion=issue["suggestion"],
-                        severity=SeverityLevel(issue["severity"]),
+                        quote=issue.get("quote", ""),
+                        suggestion=issue.get("suggestion", ""),
+                        severity=SeverityLevel(issue.get("severity", "low")),
                         location_hint=issue.get("location_hint")
                     ))
                 
@@ -226,16 +244,16 @@ class PaperReviewAgents:
             try:
                 response = await chain.ainvoke({"text": state["paper_text"]})
                 issues_data = json.loads(clean_json_text(response))
-                print(f"Coherence Agent Output: {json.dumps(issues_data, indent=2)}")
+                print(f"Coherence Agent Output: {len(issues_data)} issues found")
                 
                 coherence_issues = []
                 for issue in issues_data:
                     coherence_issues.append(Issue(
                         problem_id=str(uuid.uuid4()),
                         agent_id="coherence_agent",
-                        quote=issue["quote"],
-                        suggestion=issue["suggestion"],
-                        severity=SeverityLevel(issue["severity"]),
+                        quote=issue.get("quote", ""),
+                        suggestion=issue.get("suggestion", ""),
+                        severity=SeverityLevel(issue.get("severity", "low")),
                         location_hint=issue.get("location_hint")
                     ))
                 
@@ -280,16 +298,16 @@ class PaperReviewAgents:
             try:
                 response = await chain.ainvoke({"text": state["paper_text"]})
                 issues_data = json.loads(clean_json_text(response))
-                print(f"Citation Agent Output: {json.dumps(issues_data, indent=2)}")
+                print(f"Citation Agent Output: {len(issues_data)} issues found")
                 
                 citation_issues = []
                 for issue in issues_data:
                     citation_issues.append(Issue(
                         problem_id=str(uuid.uuid4()),
                         agent_id="citation_agent",
-                        quote=issue["quote"],
-                        suggestion=issue["suggestion"],
-                        severity=SeverityLevel(issue["severity"]),
+                        quote=issue.get("quote", ""),
+                        suggestion=issue.get("suggestion", ""),
+                        severity=SeverityLevel(issue.get("severity", "low")),
                         location_hint=issue.get("location_hint")
                     ))
                 
@@ -326,7 +344,8 @@ class PaperReviewAgents:
         
         chain = prompt | self.llm | StrOutputParser()
         
-        def process(state: GraphState) -> dict:
+        # Converted to async to avoid blocking
+        async def process(state: GraphState) -> dict:
             # Collect all issues
             all_issues = {
                 "tone_issues": [issue.to_dict() for issue in state.get("tone_issues", [])],
@@ -336,18 +355,18 @@ class PaperReviewAgents:
             }
             
             try:
-                response = chain.invoke({"issues_json": json.dumps(all_issues, indent=2)})
+                response = await chain.ainvoke({"issues_json": json.dumps(all_issues, indent=2)})
                 coordinated_data = json.loads(clean_json_text(response))
-                print(f"Coordinator Agent Output: {json.dumps(coordinated_data, indent=2)}")
+                print(f"Coordinator Agent Output: {len(coordinated_data)} final issues")
                 
                 coordinated_issues = []
                 for issue in coordinated_data:
                     coordinated_issues.append(Issue(
                         problem_id=issue.get("problem_id", str(uuid.uuid4())),
-                        agent_id=issue["agent_id"],
-                        quote=issue["quote"],
-                        suggestion=issue["suggestion"],
-                        severity=SeverityLevel(issue["severity"]),
+                        agent_id=issue.get("agent_id", "coordinator"),
+                        quote=issue.get("quote", ""),
+                        suggestion=issue.get("suggestion", ""),
+                        severity=SeverityLevel(issue.get("severity", "low")),
                         location_hint=issue.get("location_hint")
                     ))
                 
@@ -373,24 +392,94 @@ class PaperReviewAgents:
             severity_counts = {"high": 0, "medium": 0, "low": 0}
             
             for issue in state.get("coordinated_issues", []):
-                issues_summary.append(f"- [{issue.severity}] {issue.agent_id}: {issue.quote[:50]}...")
-                severity_counts[issue.severity] += 1
+                # Handle case where issue might be dict or object (safety check)
+                if isinstance(issue, dict):
+                    sev = issue.get('severity', 'low')
+                    agent = issue.get('agent_id', 'unknown')
+                    quote = issue.get('quote', '')
+                else:
+                    sev = issue.severity
+                    agent = issue.agent_id
+                    quote = issue.quote
+                    
+                issues_summary.append(f"- [{sev}] {agent}: {quote[:50]}...")
+                if sev in severity_counts:
+                    severity_counts[sev] += 1
             
             issues_text = "\n".join(issues_summary) if issues_summary else "No major issues found"
             paper_text = state["paper_text"]
             
             try:
-                # Run local model inference in a separate thread to avoid blocking
-                print("Running local scoring model...")
-                score_data = await asyncio.to_thread(
-                    score_paper_with_local_model, 
-                    paper_text, 
-                    issues_text
-                )
-                print(f"Scoring Agent Output: {json.dumps(score_data, indent=2)}")
+                score_data = {}
+                
+                # Check scoring model strategy
+                if self.scoring_model == "finetuned":
+                    # Run scoring model in a separate thread to avoid blocking
+                    print("Running finetuned scoring model...")
+                    score_data = await asyncio.to_thread(
+                        score_paper_with_local_model, 
+                        paper_text, 
+                        issues_text,
+                        True # use_finetuned
+                    )
+                elif self.scoring_model == "base":
+                    # Run base local model
+                    print("Running base local scoring model...")
+                    score_data = await asyncio.to_thread(
+                        score_paper_with_local_model, 
+                        paper_text, 
+                        issues_text,
+                        False # use_finetuned=False -> uses base model
+                    )
+                else:
+                    # Use API model (Gemini or OpenRouter)
+                    print("Running API scoring model...")
+                    
+                    # NOTE: We construct the content string manually to avoid f-string
+                    # interpretation of LaTeX braces inside paper_text
+                    
+                    system_instr = "You are an expert academic paper reviewer. Return JSON only."
+                    
+                    user_content_parts = [
+                        "Based on the following issues found in the paper:\n",
+                        issues_text,
+                        "\n\nAnd the paper text (full text provided):\n",
+                        "--- BEGIN PAPER ---\n",
+                        paper_text,
+                        "\n--- END PAPER ---\n",
+                        "\nProvide a final score out of 10 and a brief summary justification.",
+                        "\nThe score should reflect the severity and number of issues found.",
+                        "\nReturn ONLY a JSON object with the following format:",
+                        "\n{",
+                        '\n  "score": 1-10,',
+                        '\n  "summary": "brief justification text"',
+                        "\n}"
+                    ]
+                    
+                    user_content = "".join(user_content_parts)
+                    
+                    messages = [
+                        SystemMessage(content=system_instr),
+                        HumanMessage(content=user_content)
+                    ]
+                    
+                    response = await self.llm.ainvoke(messages)
+                    content = clean_json_text(response)
+                    score_data = json.loads(content)
+                    
+                    # Ensure required fields and types
+                    if "score" not in score_data:
+                        score_data["score"] = 5.0
+                    else:
+                        score_data["score"] = float(score_data["score"])
+                        
+                    if "summary" not in score_data:
+                        score_data["summary"] = "No summary provided."
+
+                print(f"Scoring Agent Output: {score_data.get('score')} - {score_data.get('summary')[:50]}...")
                 
                 # Add summary to messages
-                new_messages = state["messages"] + [
+                new_messages = state.get("messages", []) + [
                     HumanMessage(content=f"Final score: {score_data['score']}/10 - {score_data['summary']}")
                 ]
                 
@@ -402,24 +491,26 @@ class PaperReviewAgents:
             except Exception as e:
                 print(f"Scoring agent error: {e}")
                 # Fallback scoring based on severity counts
-                base_score = 10
-                base_score -= severity_counts["high"] * 2
-                base_score -= severity_counts["medium"] * 1
+                base_score = 10.0
+                base_score -= severity_counts["high"] * 2.0
+                base_score -= severity_counts["medium"] * 1.0
                 base_score -= severity_counts["low"] * 0.5
+                
+                final_calc_score = max(1.0, min(10.0, base_score))
+                
                 return {
-                    "final_score": max(1, min(10, base_score)),
+                    "final_score": final_calc_score,
                     "scoring_summary": "Score calculated based on issue severity counts due to processing error."
                 }
         
         return process
 
 
-
-def create_review_graph(llm: ChatGoogleGenerativeAI, active_agents: List[str] = None) -> StateGraph:
+def create_review_graph(llm: ChatGoogleGenerativeAI, active_agents: List[str] = None, scoring_model: str = "finetuned") -> StateGraph:
     """Create the LangGraph workflow for paper review"""
     
     # Initialize agents
-    agents = PaperReviewAgents(llm)
+    agents = PaperReviewAgents(llm, scoring_model)
     
     # Create the graph
     workflow = StateGraph(GraphState)
@@ -466,22 +557,29 @@ def create_review_graph(llm: ChatGoogleGenerativeAI, active_agents: List[str] = 
     return workflow.compile()
 
 
-
-async def review_paper(paper_text: str, api_key: str, active_agents: List[str] = None, model: str = "gemini-2.5-flash") -> Dict:
+async def review_paper(paper_text: str, api_key: str, active_agents: List[str] = None, model: str = "gemini-2.0-flash", use_local_model: bool = False, scoring_model: str = "finetuned") -> Dict:
     """
     Main function to review a paper
     
     Args:
-        paper_text: Text extracted from paper (e.g., using docling)
-        api_key: API key (Google or OpenRouter)
-        active_agents: List of agents to run (tone, structure, coherence, citation)
+        paper_text: Text extracted from paper
+        api_key: API key
+        active_agents: List of agents to run
         model: Model name to use
-    
-    Returns:
-        Dictionary with review results
+        use_local_model: Whether to use local Qwen model for agents
+        scoring_model: Which model to use for scoring ("finetuned", "base", "api")
     """
     # Initialize LLM
-    if "gemini" in model.lower() and "/" not in model:
+    if use_local_model:
+        # Use OpenRouter Qwen 2.5 14B as "local" model replacement
+        import os
+        llm = ChatOpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.environ.get("OPENROUTER_API_KEY"),
+            model="qwen/qwen-2.5-14b-instruct",
+            temperature=0.1
+        )
+    elif "gemini" in model.lower() and "/" not in model:
         llm = ChatGoogleGenerativeAI(
             temperature=0.0,
             model=model,
@@ -497,13 +595,15 @@ async def review_paper(paper_text: str, api_key: str, active_agents: List[str] =
         )
     
     # Create the graph
-    app = create_review_graph(llm, active_agents)
+    app = create_review_graph(llm, active_agents, scoring_model)
     
     # Initialize state
     initial_state = {
         "paper_text": paper_text,
         "tone_issues": [],
         "structure_issues": [],
+        "coherence_issues": [],
+        "citation_issues": [],
         "scoring_summary": None,
         "messages": []
     }
@@ -513,21 +613,21 @@ async def review_paper(paper_text: str, api_key: str, active_agents: List[str] =
     
     # Format output
     output = {
-        "issues": [issue.to_dict() for issue in result["coordinated_issues"]],
-        "final_score": result["final_score"],
+        "issues": [issue.to_dict() for issue in result.get("coordinated_issues", [])],
+        "final_score": result.get("final_score"),
         "scoring_summary": result.get("scoring_summary"),
         "statistics": {
-            "total_issues": len(result["coordinated_issues"]),
+            "total_issues": len(result.get("coordinated_issues", [])),
             "by_severity": {
-                "high": sum(1 for i in result["coordinated_issues"] if i.severity == SeverityLevel.HIGH),
-                "medium": sum(1 for i in result["coordinated_issues"] if i.severity == SeverityLevel.MEDIUM),
-                "low": sum(1 for i in result["coordinated_issues"] if i.severity == SeverityLevel.LOW)
+                "high": sum(1 for i in result.get("coordinated_issues", []) if i.severity == SeverityLevel.HIGH),
+                "medium": sum(1 for i in result.get("coordinated_issues", []) if i.severity == SeverityLevel.MEDIUM),
+                "low": sum(1 for i in result.get("coordinated_issues", []) if i.severity == SeverityLevel.LOW)
             },
             "by_agent": {
-                "tone": sum(1 for i in result["coordinated_issues"] if i.agent_id == "tone_agent"),
-                "structure": sum(1 for i in result["coordinated_issues"] if i.agent_id == "structure_agent"),
-                "coherence": sum(1 for i in result["coordinated_issues"] if i.agent_id == "coherence_agent"),
-                "citation": sum(1 for i in result["coordinated_issues"] if i.agent_id == "citation_agent")
+                "tone": sum(1 for i in result.get("coordinated_issues", []) if i.agent_id == "tone_agent"),
+                "structure": sum(1 for i in result.get("coordinated_issues", []) if i.agent_id == "structure_agent"),
+                "coherence": sum(1 for i in result.get("coordinated_issues", []) if i.agent_id == "coherence_agent"),
+                "citation": sum(1 for i in result.get("coordinated_issues", []) if i.agent_id == "citation_agent")
             }
         }
     }

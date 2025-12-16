@@ -28,6 +28,23 @@ Use uv (recommended):
 uv sync
 ```
 
+## Local Model Setup (GGUF)
+
+To use the local Qwen model (GGUF format), you need to download the model weights first.
+
+1. Install dependencies:
+   ```bash
+   uv add llama-cpp-python
+   ```
+   *Note: On macOS with Apple Silicon, `llama-cpp-python` should automatically use Metal acceleration. If you encounter issues, refer to the [llama-cpp-python documentation](https://github.com/abetlen/llama-cpp-python).*
+
+2. Download the model:
+   ```bash
+   python model/download_model.py
+   ```
+
+   This will download `unsloth/Qwen3-14B-Instruct-GGUF` (approx 10GB) to `model/weights/`.
+
 ## Docker
 
 You can build and run the app in a container. Ensure you have a `.env` file with `GOOGLE_API_KEY` in the project root (see `.env.example`).

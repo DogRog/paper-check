@@ -23,15 +23,21 @@
                 <div id="progress" class="progress" hidden>Analyzing…</div>
             </div>
             <div class="settings">
-                <div class="settings-title">Model</div>
-                <select id="model-select" style="width: 100%; margin-bottom: 1rem; padding: 0.5rem;">
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                    <option value="qwen/qwen-2.5-72b-instruct">Qwen 2.5 72B (OpenRouter)</option>
-                    <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (OpenRouter)</option>
-                    <option value="qwen/qwen-3-14b-instruct">Qwen 3 14B (OpenRouter)</option>
-                    <option value="deepseek/deepseek-r1">DeepSeek R1 (OpenRouter)</option>
-                    <option value="x-ai/grok-4.1-fast">Grok 4.1 Fast (OpenRouter)</option>
-                    <option value="local-model">Local Model (Qwen 3 14B Fine-tuned)</option>
+                <div id="api-model-container">
+                    <div class="settings-title">API Model</div>
+                    <select id="model-select" style="width: 100%; margin-bottom: 1rem; padding: 0.5rem;">
+                        <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                        <option value="qwen/qwen-2.5-72b-instruct">Qwen 2.5 72B (OpenRouter)</option>
+                        <option value="deepseek/deepseek-r1">DeepSeek R1 (OpenRouter)</option>
+                        <option value="x-ai/grok-4.1-fast">Grok 4.1 Fast (OpenRouter)</option>
+                    </select>
+                </div>
+
+                <div class="settings-title">Scoring Agent</div>
+                <select id="scoring-agent-select" style="width: 100%; margin-bottom: 1rem; padding: 0.5rem;">
+                    <option value="api">API</option>
+                    <option value="local-base">Qwen3 14b (Base)</option>
+                    <option value="local-finetuned">Qwen3 14b (Finetuned)</option>
                 </select>
 
                 <div class="settings-title">Filters</div>

@@ -108,6 +108,21 @@
     }
   })
 
+  // Model selection logic
+  const scoringAgentSelect = document.getElementById('scoring-agent-select')
+  const apiModelContainer = document.getElementById('api-model-container')
+  const modelSelect = document.getElementById('model-select')
+  
+  function updateModelOptions() {
+    if (scoringAgentSelect.value === 'api' || scoringAgentSelect.value === 'local-finetuned' || scoringAgentSelect.value === 'local-base') {
+      show(apiModelContainer)
+    } else {
+      hide(apiModelContainer)
+    }
+  }
+  scoringAgentSelect.addEventListener('change', updateModelOptions)
+  updateModelOptions()
+
   // Analyze button
   btnAnalyze.addEventListener('click', async () => {
     if (!currentFile) return
@@ -173,9 +188,30 @@
 
     fd.append('agents', JSON.stringify(activeFilters))
 
-    // Add model
-    const model = document.getElementById('model-select').value
+    // Determine model parameters based on scoring agent selection
+    const scoringAgent = document.getElementById('scoring-agent-select').value
+    
+    let model = ''
+    let useLocal = false
+    let scoringModel = 'api'
+
+    if (scoringAgent === 'api') {
+      model = document.getElementById('model-select').value
+      useLocal = false
+      scoringModel = 'api'
+    } else if (scoringAgent === 'local-base') {
+      model = document.getElementById('model-select').value
+      useLocal = false
+      scoringModel = 'base'
+    } else if (scoringAgent === 'local-finetuned') {
+      model = document.getElementById('model-select').value
+      useLocal = false
+      scoringModel = 'finetuned'
+    }
+
     fd.append('model', model)
+    fd.append('use_local_model', useLocal)
+    fd.append('scoring_model', scoringModel)
 
     const resp = await fetch('/api/analyze_pdf', {
       method: 'POST',
