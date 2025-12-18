@@ -6,3 +6,6 @@ __pycache__/
 .venv
 .DS_Store
 model/weights/
+PeerRead/
+*.jsonl
+finetune_dataset/
