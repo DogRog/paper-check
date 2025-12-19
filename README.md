@@ -110,4 +110,4 @@ The `model/` directory contains scripts to finetune a Qwen 3 14B model using the
 
 ## License
 
-[MIT](LICENSE)
+[Apache 2.0](LICENSE)
