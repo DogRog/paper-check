@@ -1,12 +1,40 @@
 import json
 import re
 import os
-import requests
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from openai import OpenAI
 
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+
+def get_llm(model: str, api_key: str = None, temperature: float = 0.0, use_local: bool = False):
+    """
+    Factory function to get the appropriate LLM instance.
+    """
+    if use_local:
+        # Use OpenRouter Qwen 3 14B as "local" model replacement
+        return ChatOpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.environ.get("OPENROUTER_API_KEY"),
+            model="qwen/qwen3-14b",
+            temperature=temperature
+        )
+    
+    if "gemini" in model.lower() and "/" not in model:
+        return ChatGoogleGenerativeAI(
+            temperature=temperature,
+            model=model,
+            api_key=api_key or os.environ.get("GOOGLE_API_KEY")
+        )
+    else:
+        # Assume OpenRouter for other models
+        return ChatOpenAI(
+            temperature=temperature,
+            model=model,
+            openai_api_key=api_key or os.environ.get("OPENROUTER_API_KEY"),
+            base_url="https://openrouter.ai/api/v1"
+        )
 
 def clean_json_text(text: str) -> str:
     """Clean JSON text by removing markdown code blocks"""
@@ -51,24 +79,18 @@ def extract_score_and_summary(text: str) -> Dict[str, Any]:
     return data
 
 
-def score_paper_with_local_model(paper_text: str, issues_text: str, use_finetuned: bool = True) -> Dict[str, Any]:
+def score_paper(paper_text: str, issues_text: str, use_finetuned: bool = True) -> Dict[str, Any]:
     """
     Score the paper using either the finetuned model (HF Endpoint) or base model (OpenRouter).
     """
-    # Truncate paper text if too long to fit in context
-    # Reserve space for system prompt, issues, and output
-    # 8192 context - ~2000 output - ~1000 issues/prompt = ~5000 for paper
-    # Approx 4 chars per token -> 20000 chars
-    max_paper_chars = 20000
-    truncated_paper = paper_text[:max_paper_chars]
     
     prompt = f"""You are an expert academic paper reviewer.
     
     Based on the following issues found in the paper:
     {issues_text}
     
-    And the paper text (excerpt):
-    {truncated_paper}...
+    And the paper text:
+    {paper_text}
     
     Provide a final score out of 10 and a brief summary justification.
     The score should reflect the severity and number of issues found.
@@ -86,7 +108,7 @@ def score_paper_with_local_model(paper_text: str, issues_text: str, use_finetune
         if use_finetuned:
             # Use HF Endpoint via OpenAI client
             client = OpenAI(
-                base_url="https://rmybkq6pxwv28z20.us-east-1.aws.endpoints.huggingface.cloud/v1/",
+                base_url=os.environ.get("INSTANCE"),
                 api_key=os.environ.get("HUGGINGFACE_API_KEY")
             )
 
@@ -102,10 +124,10 @@ def score_paper_with_local_model(paper_text: str, issues_text: str, use_finetune
             ]
 
             chat_completion = client.chat.completions.create(
-                model="LeeundEr/Qwen3-14b-PeerRead",
+                model="LeeundEr/Qwen3-14B-Finetune",
                 messages=messages,
                 stream=True,
-                max_tokens=2048,
+                max_tokens=4096,
                 temperature=0.1
             )
 
@@ -121,7 +143,7 @@ def score_paper_with_local_model(paper_text: str, issues_text: str, use_finetune
                 api_key=os.environ.get("OPENROUTER_API_KEY"),
                 model="qwen/qwen3-14b",
                 temperature=0.1,
-                max_tokens=2048
+                max_tokens=4096
             )
             
             messages = [
@@ -163,14 +185,6 @@ def score_paper_with_local_model(paper_text: str, issues_text: str, use_finetune
         
     except Exception as e:
         print(f"Error in scoring (use_finetuned={use_finetuned}): {e}")
-        
-        # Fallback to base model if finetuned failed
-        if use_finetuned:
-            print("Falling back to base model...")
-            try:
-                return score_paper_with_local_model(paper_text, issues_text, use_finetuned=False)
-            except Exception as e2:
-                print(f"Fallback failed: {e2}")
         
         return {
             "score": 5.0,

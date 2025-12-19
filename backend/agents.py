@@ -10,12 +10,13 @@ from typing import Dict, List, Optional, TypedDict
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.language_models import BaseChatModel
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 
 # Assuming these exist in your backend
-from backend.local_model import score_paper_with_local_model
+from backend.llm import get_llm, score_paper
 
 
 def clean_json_text(text: str | BaseMessage) -> str:
@@ -99,7 +100,7 @@ class GraphState(TypedDict):
 class PaperReviewAgents:
     """Collection of agents for paper review"""
 
-    def __init__(self, llm: ChatGoogleGenerativeAI, scoring_model: str = "finetuned"):
+    def __init__(self, llm: BaseChatModel, scoring_model: str = "finetuned"):
         self.llm = llm
         self.scoring_model = scoring_model
         
@@ -417,7 +418,7 @@ class PaperReviewAgents:
                     # Run scoring model in a separate thread to avoid blocking
                     print("Running finetuned scoring model...")
                     score_data = await asyncio.to_thread(
-                        score_paper_with_local_model, 
+                        score_paper, 
                         paper_text, 
                         issues_text,
                         True # use_finetuned
@@ -426,7 +427,7 @@ class PaperReviewAgents:
                     # Run base local model
                     print("Running base local scoring model...")
                     score_data = await asyncio.to_thread(
-                        score_paper_with_local_model, 
+                        score_paper, 
                         paper_text, 
                         issues_text,
                         False # use_finetuned=False -> uses base model
@@ -506,7 +507,7 @@ class PaperReviewAgents:
         return process
 
 
-def create_review_graph(llm: ChatGoogleGenerativeAI, active_agents: List[str] = None, scoring_model: str = "finetuned") -> StateGraph:
+def create_review_graph(llm: BaseChatModel, active_agents: List[str] = None, scoring_model: str = "finetuned") -> StateGraph:
     """Create the LangGraph workflow for paper review"""
     
     # Initialize agents
@@ -570,29 +571,7 @@ async def review_paper(paper_text: str, api_key: str, active_agents: List[str] =
         scoring_model: Which model to use for scoring ("finetuned", "base", "api")
     """
     # Initialize LLM
-    if use_local_model:
-        # Use OpenRouter Qwen 2.5 14B as "local" model replacement
-        import os
-        llm = ChatOpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=os.environ.get("OPENROUTER_API_KEY"),
-            model="qwen/qwen-2.5-14b-instruct",
-            temperature=0.1
-        )
-    elif "gemini" in model.lower() and "/" not in model:
-        llm = ChatGoogleGenerativeAI(
-            temperature=0.0,
-            model=model,
-            api_key=api_key
-        )
-    else:
-        # Assume OpenRouter for other models
-        llm = ChatOpenAI(
-            temperature=0.0,
-            model=model,
-            openai_api_key=api_key,
-            base_url="https://openrouter.ai/api/v1"
-        )
+    llm = get_llm(model=model, api_key=api_key, use_local=use_local_model)
     
     # Create the graph
     app = create_review_graph(llm, active_agents, scoring_model)

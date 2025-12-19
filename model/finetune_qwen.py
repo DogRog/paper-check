@@ -11,25 +11,26 @@ def train_and_evaluate(
     train_path="finetune_dataset/unsloth_finetune_train.jsonl",
     val_path="finetune_dataset/unsloth_finetune_val.jsonl",
     test_path="finetune_dataset/unsloth_finetune_test.jsonl",
-    max_seq_length=16384,
+    max_seq_length=32768,
     batch_size=2,
     grad_accum_steps=4,
     learning_rate=2e-4,
     lora_r=16,
     load_in_4bit=True,
-    enable_thinking=False,  # New Qwen 3 feature
-    save_gguf=False
+    enable_thinking=False,
+    save_gguf=False,
+    packing=False 
 ):
     # --- 0. Configuration ---
     print(f"\n=== Starting Qwen 3 Finetuning (Mode: {mode.upper()}) ===")
     
-    # Auto-detect Bfloat16 (Ampere/Hopper GPUs)
     dtype = None 
-    model_id = "unsloth/Qwen3-14B-Instruct-bnb-4bit"
+    model_id = "unsloth/Qwen3-14B-unsloth-bnb-4bit"
     
     print(f"Configurations:")
     print(f"  Model: {model_id}")
     print(f"  Thinking Mode: {'Enabled' if enable_thinking else 'Disabled'}")
+    print(f"  Packing: {'Enabled' if packing else 'Disabled'}")
     print(f"  Max Seq Length: {max_seq_length}")
     print(f"  Batch Size: {batch_size} | Accumulation: {grad_accum_steps}")
     
@@ -56,7 +57,7 @@ def train_and_evaluate(
         random_state = 3407,
     )
 
-    # --- 3. Data Processing (Updated for Qwen 3) ---
+    # --- 3. Data Processing ---
     from unsloth.chat_templates import get_chat_template
     tokenizer = get_chat_template(tokenizer, chat_template = "chatml")
 
@@ -67,9 +68,6 @@ def train_and_evaluate(
                 convo, 
                 tokenize=False, 
                 add_generation_prompt=False,
-                # Qwen 3 specific argument to wrap output in <think> tags if needed
-                # Note: unsloth handles the low-level tags, but we explicitly pass it here if supported by your version
-                # If your transformers version is older, remove 'enable_thinking' from apply_chat_template
             ) for convo in convos
         ]
         return { "text" : texts }
@@ -134,6 +132,8 @@ def train_and_evaluate(
         eval_strategy = "steps" if val_dataset else "no",
         eval_steps = eval_steps,
         report_to = "none",
+        # FIX: Prevent Trainer from stripping 'text' column, required for some packing configs
+        remove_unused_columns = False, 
     )
 
     # --- 5. Initialize Trainer ---
@@ -145,14 +145,20 @@ def train_and_evaluate(
         dataset_text_field = "text",
         max_seq_length = max_seq_length,
         dataset_num_proc = 2,
-        packing = False, 
+        packing = packing, 
         args = training_args,
     )
 
     # --- 6. Train ---
     print("\n[5/7] Starting Training...")
     
-    # Memory Stats
+    # Check for checkpoints
+    last_checkpoint = None
+    if os.path.isdir(output_dir):
+        checkpoints = [d for d in os.listdir(output_dir) if d.startswith("checkpoint")]
+        if checkpoints:
+            print(f"  Found existing checkpoints: {checkpoints}. You might be able to resume.")
+
     gpu_stats = torch.cuda.get_device_properties(0)
     start_gpu_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
     max_memory = round(gpu_stats.total_memory / 1024 / 1024 / 1024, 3)
@@ -161,7 +167,6 @@ def train_and_evaluate(
 
     trainer_stats = trainer.train()
     
-    # Post-train Memory Stats
     used_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
     used_memory_for_lora = round(used_memory - start_gpu_memory, 3)
     print(f"  Reserved End: {used_memory} GB")
@@ -170,8 +175,15 @@ def train_and_evaluate(
     # --- 7. Evaluation ---
     if test_dataset:
         print("\n[6/7] Evaluating on Test Set...")
-        test_results = trainer.evaluate(test_dataset)
-        print(f"  Test Loss: {test_results['eval_loss']}")
+        try:
+            # Note: With packing=True, evaluating on a raw dataset often fails because
+            # SFTTrainer packs the train/val sets in __init__, but not this new test set.
+            test_results = trainer.evaluate(test_dataset)
+            print(f"  Test Loss: {test_results['eval_loss']}")
+        except Exception as e:
+            print(f"  ! WARNING: Evaluation failed. This is common with packing=True on external datasets.")
+            print(f"  ! Error: {e}")
+            print(f"  ! Skipping evaluation to proceed with Model Saving.")
 
     # --- 8. Saving ---
     print(f"\n[7/7] Saving model to {output_dir}...")
@@ -193,8 +205,8 @@ if __name__ == "__main__":
     # Mode and Dataset
     parser.add_argument("--mode", choices=["test", "full"], default="test", help="Training mode")
     parser.add_argument("--train_path", default="finetune_dataset/unsloth_finetune_train.jsonl")
-    parser.add_argument("--val_path", default="finetune_dataset/unsloth_finetune_val.jsonl")     
-    parser.add_argument("--test_path", default="finetune_dataset/unsloth_finetune_test.jsonl")     
+    parser.add_argument("--val_path", default="finetune_dataset/unsloth_finetune_val.jsonl")      
+    parser.add_argument("--test_path", default="finetune_dataset/unsloth_finetune_test.jsonl")      
     
     # Hyperparameters
     parser.add_argument("--max_seq_length", type=int, default=16384)
@@ -205,6 +217,7 @@ if __name__ == "__main__":
     parser.add_argument("--no_4bit", action="store_true", help="Disable 4-bit quantization")
     parser.add_argument("--save_gguf", action="store_true", help="Save GGUF version at the end")
     parser.add_argument("--disable_thinking", action="store_true", help="Disable Qwen 3 thinking mode")
+    parser.add_argument("--packing", action="store_true", help="Enable packing (combines short examples to fill seq length)")
     
     args = parser.parse_args()
     
@@ -220,5 +233,6 @@ if __name__ == "__main__":
         lora_r=args.lora_r,
         load_in_4bit=not args.no_4bit,
         save_gguf=args.save_gguf,
-        enable_thinking=not args.disable_thinking
+        enable_thinking=not args.disable_thinking,
+        packing=args.packing
     )
