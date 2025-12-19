@@ -2,14 +2,16 @@ import json
 import uuid
 import asyncio
 import re
+import operator
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, TypedDict
+from typing import Dict, List, Optional, TypedDict, Annotated
 
 # Added SystemMessage to imports
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableParallel
 from langchain_core.language_models import BaseChatModel
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
@@ -95,6 +97,7 @@ class GraphState(TypedDict):
     final_score: Optional[float]
     scoring_summary: Optional[str]
     messages: List[BaseMessage]
+    active_agents: List[str]
 
 
 class PaperReviewAgents:
@@ -151,10 +154,10 @@ class PaperReviewAgents:
                         location_hint=issue.get("location_hint")
                     ))
                 
-                return {"tone_issues": tone_issues}
+                return {"tone_issues": tone_issues, "finished_agents": ["tone"]}
             except Exception as e:
                 print(f"Tone agent error: {e}")
-                return {"tone_issues": []}
+                return {"tone_issues": [], "finished_agents": ["tone"]}
         
         return process
     
@@ -204,10 +207,10 @@ class PaperReviewAgents:
                         location_hint=issue.get("location_hint")
                     ))
                 
-                return {"structure_issues": structure_issues}
+                return {"structure_issues": structure_issues, "finished_agents": ["structure"]}
             except Exception as e:
                 print(f"Structure agent error: {e}")
-                return {"structure_issues": []}
+                return {"structure_issues": [], "finished_agents": ["structure"]}
         
         return process
     
@@ -258,10 +261,10 @@ class PaperReviewAgents:
                         location_hint=issue.get("location_hint")
                     ))
                 
-                return {"coherence_issues": coherence_issues}
+                return {"coherence_issues": coherence_issues, "finished_agents": ["coherence"]}
             except Exception as e:
                 print(f"Coherence agent error: {e}")
-                return {"coherence_issues": []}
+                return {"coherence_issues": [], "finished_agents": ["coherence"]}
         
         return process
 
@@ -312,10 +315,10 @@ class PaperReviewAgents:
                         location_hint=issue.get("location_hint")
                     ))
                 
-                return {"citation_issues": citation_issues}
+                return {"citation_issues": citation_issues, "finished_agents": ["citation"]}
             except Exception as e:
                 print(f"Citation agent error: {e}")
-                return {"citation_issues": []}
+                return {"citation_issues": [], "finished_agents": ["citation"]}
         
         return process
     
@@ -516,42 +519,51 @@ def create_review_graph(llm: BaseChatModel, active_agents: List[str] = None, sco
     # Create the graph
     workflow = StateGraph(GraphState)
     
-    # Define parallel analysis node
-    async def parallel_analysis(state: GraphState):
-        tasks = []
-        agent_map = {
-            "tone": agents.create_tone_agent(),
-            "structure": agents.create_structure_agent(),
-            "coherence": agents.create_coherence_agent(),
-            "citation": agents.create_citation_agent()
-        }
+    # Determine which agents to run
+    agent_map = {
+        "tone": agents.create_tone_agent(),
+        "structure": agents.create_structure_agent(),
+        "coherence": agents.create_coherence_agent(),
+        "citation": agents.create_citation_agent()
+    }
+    
+    agents_to_run = active_agents if active_agents else agent_map.keys()
+    
+    # Filter map to only active agents
+    active_map = {k: v for k, v in agent_map.items() if k in agents_to_run}
+    
+    # Create parallel chain
+    # RunnableParallel will run all values in the dict concurrently
+    parallel_chain = RunnableParallel(active_map)
+    
+    async def run_parallel_analysis(state: GraphState):
+        # Run the parallel chain
+        # Note: RunnableParallel passes the input (state) to each runnable
+        results = await parallel_chain.ainvoke(state)
         
-        # Determine which agents to run
-        agents_to_run = active_agents if active_agents else agent_map.keys()
+        # results will be like:
+        # {
+        #   "tone": {"tone_issues": [...]},
+        #   "structure": {"structure_issues": [...]},
+        #   ...
+        # }
         
-        for name in agents_to_run:
-            if name in agent_map:
-                tasks.append(agent_map[name](state))
-        
-        if not tasks:
-            return {}
-            
-        results = await asyncio.gather(*tasks)
-        
-        # Merge results
+        # Flatten the results to update state
         new_state = {}
-        for res in results:
-            new_state.update(res)
+        for key, value in results.items():
+            if isinstance(value, dict):
+                new_state.update(value)
+        
         return new_state
 
     # Add nodes
-    workflow.add_node("parallel_analysis", parallel_analysis)
+    workflow.add_node("analysis", run_parallel_analysis)
     workflow.add_node("coordinator", agents.create_coordinator_agent())
     workflow.add_node("scorer", agents.create_scoring_agent())
     
     # Define the flow
-    workflow.set_entry_point("parallel_analysis")
-    workflow.add_edge("parallel_analysis", "coordinator")
+    workflow.set_entry_point("analysis")
+    workflow.add_edge("analysis", "coordinator")
     workflow.add_edge("coordinator", "scorer")
     workflow.add_edge("scorer", END)
     
@@ -584,7 +596,8 @@ async def review_paper(paper_text: str, api_key: str, active_agents: List[str] =
         "coherence_issues": [],
         "citation_issues": [],
         "scoring_summary": None,
-        "messages": []
+        "messages": [],
+        "active_agents": active_agents if active_agents else ["tone", "structure", "coherence", "citation"]
     }
     
     # Run the graph
@@ -612,3 +625,30 @@ async def review_paper(paper_text: str, api_key: str, active_agents: List[str] =
     }
     
     return output
+
+
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--graph", action="store_true", help="Generate LangGraph architecture image")
+    args = parser.parse_args()
+
+    if args.graph:
+        print("Generating LangGraph architecture image...")
+        
+        # Use a dummy LLM for graph generation
+        dummy_llm = ChatOpenAI(api_key="dummy", model="gpt-3.5-turbo")
+        
+        # Create the actual application graph
+        app = create_review_graph(dummy_llm, scoring_model="finetuned")
+        
+        try:
+            png_data = app.get_graph().draw_mermaid_png()
+            output_path = "langgraph_architecture.png"
+            with open(output_path, "wb") as f:
+                f.write(png_data)
+            print(f"Successfully generated {output_path}")
+        except Exception as e:
+            print(f"Error generating image: {e}")
+            print("Ensure you have 'langgraph' installed and 'graphviz' (optional but recommended) or internet access for mermaid.")

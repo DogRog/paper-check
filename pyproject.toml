@@ -1,7 +1,7 @@
 [project]
 name = "paper-check"
 version = "0.1.0"
-description = "Add your description here"
+description = "AI scientific paper review with structure, coherence, and tone checks powered by LangGraph LLM agents."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
