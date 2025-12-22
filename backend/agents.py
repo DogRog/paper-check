@@ -438,47 +438,13 @@ class PaperReviewAgents:
                 else:
                     # Use API model (Gemini or OpenRouter)
                     print("Running API scoring model...")
-                    
-                    # NOTE: We construct the content string manually to avoid f-string
-                    # interpretation of LaTeX braces inside paper_text
-                    
-                    system_instr = "You are an expert academic paper reviewer. Return JSON only."
-                    
-                    user_content_parts = [
-                        "Based on the following issues found in the paper:\n",
+                    score_data = await asyncio.to_thread(
+                        score_paper, 
+                        paper_text, 
                         issues_text,
-                        "\n\nAnd the paper text (full text provided):\n",
-                        "--- BEGIN PAPER ---\n",
-                        paper_text,
-                        "\n--- END PAPER ---\n",
-                        "\nProvide a final score out of 10 and a brief summary justification.",
-                        "\nThe score should reflect the severity and number of issues found.",
-                        "\nReturn ONLY a JSON object with the following format:",
-                        "\n{",
-                        '\n  "score": 1-10,',
-                        '\n  "summary": "brief justification text"',
-                        "\n}"
-                    ]
-                    
-                    user_content = "".join(user_content_parts)
-                    
-                    messages = [
-                        SystemMessage(content=system_instr),
-                        HumanMessage(content=user_content)
-                    ]
-                    
-                    response = await self.llm.ainvoke(messages)
-                    content = clean_json_text(response)
-                    score_data = json.loads(content)
-                    
-                    # Ensure required fields and types
-                    if "score" not in score_data:
-                        score_data["score"] = 5.0
-                    else:
-                        score_data["score"] = float(score_data["score"])
-                        
-                    if "summary" not in score_data:
-                        score_data["summary"] = "No summary provided."
+                        False, # use_finetuned
+                        self.llm
+                    )
 
                 print(f"Scoring Agent Output: {score_data.get('score')} - {score_data.get('summary')[:50]}...")
                 

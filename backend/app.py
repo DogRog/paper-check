@@ -12,7 +12,7 @@ load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 if not GOOGLE_API_KEY and not OPENROUTER_API_KEY:
-    print("Warning: Neither GOOGLE_API_KEY nor OPENROUTER_API_KEY is set. LLM analysis will use mock data.")
+    print("Warning: Neither GOOGLE_API_KEY nor OPENROUTER_API_KEY is set.")
 
 
 app = FastAPI(title="Paper Check API")

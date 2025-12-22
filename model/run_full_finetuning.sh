@@ -3,4 +3,5 @@
 python finetune_qwen.py \
     --mode full \
     --disable_thinking \
-    --max_seq_length 16384
+    --max_seq_length 32768 \
+    --packing

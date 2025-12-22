@@ -36,6 +36,7 @@ def get_llm(model: str, api_key: str = None, temperature: float = 0.0, use_local
             base_url="https://openrouter.ai/api/v1"
         )
 
+
 def clean_json_text(text: str) -> str:
     """Clean JSON text by removing markdown code blocks"""
     text = text.strip()
@@ -79,9 +80,9 @@ def extract_score_and_summary(text: str) -> Dict[str, Any]:
     return data
 
 
-def score_paper(paper_text: str, issues_text: str, use_finetuned: bool = True) -> Dict[str, Any]:
+def score_paper(paper_text: str, issues_text: str, use_finetuned: bool = True, llm: Optional[Any] = None) -> Dict[str, Any]:
     """
-    Score the paper using either the finetuned model (HF Endpoint) or base model (OpenRouter).
+    Score the paper using either the finetuned model (HF Endpoint), base model (OpenRouter), or provided LLM.
     """
     
     prompt = f"""You are an expert academic paper reviewer.
@@ -135,6 +136,14 @@ def score_paper(paper_text: str, issues_text: str, use_finetuned: bool = True) -
             for message in chat_completion:
                 if message.choices[0].delta.content:
                     content += message.choices[0].delta.content
+
+        elif llm:
+            messages = [
+                SystemMessage(content="You are a helpful assistant that outputs JSON."),
+                HumanMessage(content=prompt)
+            ]
+            result = llm.invoke(messages)
+            content = result.content
                 
         else:
             # Use OpenRouter
@@ -154,7 +163,7 @@ def score_paper(paper_text: str, issues_text: str, use_finetuned: bool = True) -
             result = llm.invoke(messages)
             content = result.content
 
-        print(f"DEBUG: Raw content from LLM (use_finetuned={use_finetuned}): {repr(content)}")
+        print(f"DEBUG: Raw content from LLM (use_finetuned={use_finetuned}):\n{content}")
         
         if not content:
             raise ValueError("LLM returned empty content")
